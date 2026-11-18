@@ -1,14 +1,22 @@
 "use client"
 
 import { useRef, useState, useSyncExternalStore } from "react"
-import { ChevronLeftIcon, ChevronRightIcon, Trash2Icon } from "lucide-react"
+import {
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  ClipboardListIcon,
+  PlusIcon,
+  Trash2Icon,
+} from "lucide-react"
 
+import { ProgressBar } from "@/components/progress-bar"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useTodos, type Todo } from "@/hooks/use-todos"
 import { formatDateLabel, shiftDateKey, todayKey } from "@/lib/date"
+import { summarize } from "@/lib/todo-stats"
 import { cn } from "@/lib/utils"
 
 type Filter = "all" | "active" | "completed"
@@ -43,15 +51,19 @@ export function TodoApp() {
         : todo.completed
   )
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    // 한글 조합 중 Enter는 무시 (중복 추가 방지)
-    if (e.key !== "Enter" || e.nativeEvent.isComposing) return
+  const submit = () => {
     const text = draft.trim()
     if (!text) return
     addTodo(text, date)
     setDraft("")
     // 새 항목이 필터에 가려지지 않도록 전체 보기로 돌아간다
     setFilter("all")
+  }
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    // 한글 조합 중 Enter는 무시 (중복 추가 방지)
+    if (e.key !== "Enter" || e.nativeEvent.isComposing) return
+    submit()
   }
 
   const canSave = useSyncExternalStore(
@@ -62,63 +74,81 @@ export function TodoApp() {
     () => true
   )
 
+  const { percent } = summarize(dayTodos)
+
   return (
     <div className="flex flex-col gap-4">
-      <p className="text-xs text-muted-foreground">
-        {canSave
-          ? "할 일은 이 브라우저에 저장됩니다"
-          : "이 브라우저에서는 할 일이 저장되지 않습니다"}
-      </p>
       <div className="flex items-center gap-1">
         <Button
           variant="ghost"
-          size="icon-sm"
+          size="icon"
           onClick={() => setPicked(shiftDateKey(date, -1))}
           disabled={!date}
           aria-label="이전 날짜"
         >
           <ChevronLeftIcon />
         </Button>
-        <div className="flex flex-1 flex-col items-center">
+        <div className="flex flex-1 flex-col items-center gap-0.5">
+          <span className="min-h-6 text-base font-semibold">
+            {date ? formatDateLabel(date) : " "}
+          </span>
           <Input
             type="date"
             value={date}
             onChange={(e) => e.target.value && setPicked(e.target.value)}
             aria-label="날짜 선택"
-            className="h-8 w-40 text-center"
+            className="h-7 w-36 border-none bg-transparent text-center text-xs text-muted-foreground shadow-none dark:bg-transparent"
           />
-          <span className="mt-1 text-xs text-muted-foreground">
-            {date ? formatDateLabel(date) : " "}
-          </span>
         </div>
         <Button
           variant="ghost"
-          size="icon-sm"
+          size="icon"
           onClick={() => setPicked(shiftDateKey(date, 1))}
           disabled={!date}
           aria-label="다음 날짜"
         >
           <ChevronRightIcon />
         </Button>
+      </div>
+      <div className="flex items-center gap-3">
+        <ProgressBar
+          percent={percent}
+          label="이 날짜 진행률"
+          className="flex-1"
+        />
+        <span className="text-xs whitespace-nowrap text-muted-foreground tabular-nums">
+          {completedCount}/{dayTodos.length} · {percent}%
+        </span>
         <Button
           variant="outline"
-          size="sm"
+          size="xs"
           onClick={() => setPicked(null)}
           disabled={!picked || picked === today}
         >
           오늘
         </Button>
       </div>
-      <Input
-        value={draft}
-        onChange={(e) => setDraft(e.target.value)}
-        onKeyDown={handleKeyDown}
-        placeholder="할 일을 입력하고 Enter"
-        aria-label="새 할 일"
-        autoFocus
-      />
+      <div className="flex gap-2">
+        <Input
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={handleKeyDown}
+          placeholder="할 일을 입력하고 Enter"
+          aria-label="새 할 일"
+          autoFocus
+          className="h-10"
+        />
+        <Button
+          size="icon-lg"
+          onClick={submit}
+          disabled={!draft.trim()}
+          aria-label="할 일 추가"
+        >
+          <PlusIcon />
+        </Button>
+      </div>
       <Tabs value={filter} onValueChange={(v) => setFilter(v as Filter)}>
-        <TabsList aria-label="필터">
+        <TabsList aria-label="필터" className="w-full">
           {FILTERS.map(({ value, label }) => (
             <TabsTrigger key={value} value={value}>
               {label}
@@ -127,13 +157,16 @@ export function TodoApp() {
         </TabsList>
       </Tabs>
       {visibleTodos.length === 0 ? (
-        <p className="py-6 text-center text-sm text-muted-foreground">
-          {dayTodos.length === 0
-            ? "이 날짜에는 할 일이 없습니다"
-            : "해당하는 할 일이 없습니다"}
-        </p>
+        <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed py-10 text-muted-foreground">
+          <ClipboardListIcon className="size-8 opacity-50" aria-hidden />
+          <p className="text-sm">
+            {dayTodos.length === 0
+              ? "이 날짜에는 할 일이 없습니다"
+              : "해당하는 할 일이 없습니다"}
+          </p>
+        </div>
       ) : (
-        <ul className="flex flex-col gap-1">
+        <ul className="flex flex-col divide-y overflow-hidden rounded-xl border">
           {visibleTodos.map((todo) => (
             <TodoItem
               key={todo.id}
@@ -145,8 +178,13 @@ export function TodoApp() {
           ))}
         </ul>
       )}
-      {completedCount > 0 && (
-        <div className="flex justify-end">
+      <div className="flex min-h-8 items-center justify-between gap-2">
+        <p className="text-xs text-muted-foreground">
+          {canSave
+            ? "할 일은 이 브라우저에 저장됩니다"
+            : "이 브라우저에서는 할 일이 저장되지 않습니다"}
+        </p>
+        {completedCount > 0 && (
           <Button
             variant="ghost"
             size="sm"
@@ -155,8 +193,8 @@ export function TodoApp() {
           >
             완료한 일 지우기 ({completedCount})
           </Button>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   )
 }
@@ -203,7 +241,7 @@ function TodoItem({
   }
 
   return (
-    <li className="group flex min-h-11 items-center gap-3 rounded-lg px-2 hover:bg-muted/50">
+    <li className="group flex min-h-12 items-center gap-3 px-3 transition-colors hover:bg-muted/50">
       <Checkbox
         checked={todo.completed}
         onCheckedChange={onToggle}
@@ -235,7 +273,7 @@ function TodoItem({
         size="icon-sm"
         onClick={onDelete}
         aria-label={`${todo.text} 삭제`}
-        className="text-muted-foreground hover:text-destructive"
+        className="text-muted-foreground hover:text-destructive pointer-fine:opacity-0 pointer-fine:group-hover:opacity-100 pointer-fine:focus-visible:opacity-100"
       >
         <Trash2Icon />
       </Button>

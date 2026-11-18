@@ -13,7 +13,7 @@ const fontMono = Geist_Mono({
 })
 
 export const metadata: Metadata = {
-  title: "todo",
+  title: "Todo",
   description:
     "Claude Code Playbook 강의 실습용 Next.js · shadcn/ui Todo 앱 저장소.",
 }
@@ -25,7 +25,7 @@ export default function RootLayout({
 }>) {
   return (
     <html
-      lang="en"
+      lang="ko"
       suppressHydrationWarning
       className={cn("antialiased", fontMono.variable, "font-sans", nunitoSans.variable)}
     >
