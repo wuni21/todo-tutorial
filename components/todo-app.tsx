@@ -1,13 +1,18 @@
 "use client"
 
-import { useRef, useState, useSyncExternalStore } from "react"
-import { ChevronLeftIcon, ChevronRightIcon, Trash2Icon } from "lucide-react"
+import { useEffect, useRef, useState, useSyncExternalStore } from "react"
+import {
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  PencilIcon,
+  Trash2Icon,
+} from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { useTodos, type Todo } from "@/hooks/use-todos"
+import { useTodos, type RemovedTodo, type Todo } from "@/hooks/use-todos"
 import { formatDateLabel, shiftDateKey, todayKey } from "@/lib/date"
 import { cn } from "@/lib/utils"
 
@@ -19,12 +24,43 @@ const FILTERS: { value: Filter; label: string }[] = [
   { value: "completed", label: "완료" },
 ]
 
+// 되돌리기 안내를 보여 주는 시간
+const UNDO_TIMEOUT_MS = 6000
+
 // localStorage 지원 여부는 바뀌지 않으므로 구독할 이벤트가 없다
 const subscribeNothing = () => () => {}
 
 export function TodoApp() {
-  const { todos, addTodo, toggleTodo, deleteTodo, editTodo, clearCompleted } =
-    useTodos()
+  const {
+    todos,
+    addTodo,
+    toggleTodo,
+    deleteTodo,
+    editTodo,
+    clearCompleted,
+    restoreTodos,
+  } = useTodos()
+  // 마지막으로 지운 항목. 잠깐 동안 되돌리기 버튼을 보여 준다
+  const [undo, setUndo] = useState<{
+    message: string
+    removed: RemovedTodo[]
+  } | null>(null)
+
+  useEffect(() => {
+    if (!undo) return
+    const timer = setTimeout(() => setUndo(null), UNDO_TIMEOUT_MS)
+    return () => clearTimeout(timer)
+  }, [undo])
+
+  const offerUndo = (message: string, removed: RemovedTodo[]) => {
+    if (removed.length > 0) setUndo({ message, removed })
+  }
+
+  const handleUndo = () => {
+    if (!undo) return
+    restoreTodos(undo.removed)
+    setUndo(null)
+  }
   const [draft, setDraft] = useState("")
   const [filter, setFilter] = useState<Filter>("all")
   // 서버에는 "오늘"을 알 수 없으므로 빈 값으로 그리고, hydration 뒤 브라우저 값으로 바꾼다
@@ -139,7 +175,9 @@ export function TodoApp() {
               key={todo.id}
               todo={todo}
               onToggle={() => toggleTodo(todo.id)}
-              onDelete={() => deleteTodo(todo.id)}
+              onDelete={() =>
+                offerUndo(`“${todo.text}” 삭제함`, deleteTodo(todo.id))
+              }
               onEdit={(text) => editTodo(todo.id, text)}
             />
           ))}
@@ -150,13 +188,29 @@ export function TodoApp() {
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => clearCompleted(date)}
+            onClick={() =>
+              offerUndo(
+                `완료한 할 일 ${completedCount}개 지움`,
+                clearCompleted(date)
+              )
+            }
             className="text-muted-foreground hover:text-destructive"
           >
             완료한 일 지우기 ({completedCount})
           </Button>
         </div>
       )}
+      {/* 스크린리더가 안내를 읽도록 영역은 항상 두고 내용만 바꾼다 */}
+      <div role="status" aria-live="polite">
+        {undo && (
+          <div className="flex items-center justify-between gap-3 rounded-lg border bg-muted/50 px-3 py-2 text-sm">
+            <span className="min-w-0 truncate">{undo.message}</span>
+            <Button variant="outline" size="sm" onClick={handleUndo}>
+              되돌리기
+            </Button>
+          </div>
+        )}
+      </div>
     </div>
   )
 }
@@ -229,6 +283,17 @@ function TodoItem({
         >
           {todo.text}
         </span>
+      )}
+      {!editing && (
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          onClick={startEdit}
+          aria-label={`${todo.text} 수정`}
+          className="text-muted-foreground"
+        >
+          <PencilIcon />
+        </Button>
       )}
       <Button
         variant="ghost"

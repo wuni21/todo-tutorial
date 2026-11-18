@@ -12,6 +12,10 @@ export type Todo = {
   date: string
 }
 
+// 지운 할 일과 원래 위치. 되돌릴 때 원래 바로 뒤에 있던 항목(nextId) 앞에
+// 다시 넣는다. 그 사이 새 항목이 추가돼도 자리가 밀리지 않는다
+export type RemovedTodo = { todo: Todo; index: number; nextId: string | null }
+
 const STORAGE_KEY = "todos"
 const EMPTY: Todo[] = []
 
@@ -79,9 +83,19 @@ export function useTodos() {
     [update]
   )
 
+  // 조건에 맞는 할 일을 지우고, 되돌릴 수 있도록 지운 항목을 돌려준다
+  const removeWhere = useCallback((match: (todo: Todo) => boolean) => {
+    const prev = readTodos()
+    const removed: RemovedTodo[] = prev.flatMap((todo, index) =>
+      match(todo) ? [{ todo, index, nextId: prev[index + 1]?.id ?? null }] : []
+    )
+    if (removed.length > 0) writeTodos(prev.filter((t) => !match(t)))
+    return removed
+  }, [])
+
   const deleteTodo = useCallback(
-    (id: string) => update((prev) => prev.filter((t) => t.id !== id)),
-    [update]
+    (id: string) => removeWhere((t) => t.id === id),
+    [removeWhere]
   )
 
   const editTodo = useCallback(
@@ -92,10 +106,41 @@ export function useTodos() {
 
   const clearCompleted = useCallback(
     // 지정한 날짜의 완료 항목만 지운다
-    (date: string) =>
-      update((prev) => prev.filter((t) => !(t.completed && t.date === date))),
+    (date: string) => removeWhere((t) => t.completed && t.date === date),
+    [removeWhere]
+  )
+
+  const restoreTodos = useCallback(
+    // 뒤쪽 항목부터 넣어야, 연달아 지운 항목들도 서로를 기준으로 제자리를 찾는다
+    (removed: RemovedTodo[]) =>
+      update((prev) => {
+        const next = [...prev]
+        for (const { todo, index, nextId } of [...removed].sort(
+          (a, b) => b.index - a.index
+        )) {
+          const anchor =
+            nextId === null
+              ? next.length
+              : next.findIndex((t) => t.id === nextId)
+          // 기준 항목도 그사이 지워졌으면 원래 순번 자리에 넣는다
+          next.splice(
+            anchor >= 0 ? anchor : Math.min(index, next.length),
+            0,
+            todo
+          )
+        }
+        return next
+      }),
     [update]
   )
 
-  return { todos, addTodo, toggleTodo, deleteTodo, editTodo, clearCompleted }
+  return {
+    todos,
+    addTodo,
+    toggleTodo,
+    deleteTodo,
+    editTodo,
+    clearCompleted,
+    restoreTodos,
+  }
 }
