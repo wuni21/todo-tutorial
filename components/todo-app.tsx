@@ -1,13 +1,14 @@
 "use client"
 
 import { useRef, useState, useSyncExternalStore } from "react"
-import { Trash2Icon } from "lucide-react"
+import { ChevronLeftIcon, ChevronRightIcon, Trash2Icon } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useTodos, type Todo } from "@/hooks/use-todos"
+import { formatDateLabel, shiftDateKey, todayKey } from "@/lib/date"
 import { cn } from "@/lib/utils"
 
 type Filter = "all" | "active" | "completed"
@@ -26,10 +27,15 @@ export function TodoApp() {
     useTodos()
   const [draft, setDraft] = useState("")
   const [filter, setFilter] = useState<Filter>("all")
+  // 서버에는 "오늘"을 알 수 없으므로 빈 값으로 그리고, hydration 뒤 브라우저 값으로 바꾼다
+  const today = useSyncExternalStore(subscribeNothing, todayKey, () => "")
+  const [picked, setPicked] = useState<string | null>(null)
+  const date = picked ?? today
 
-  const completedCount = todos.filter((todo) => todo.completed).length
+  const dayTodos = todos.filter((todo) => todo.date === date)
+  const completedCount = dayTodos.filter((todo) => todo.completed).length
 
-  const visibleTodos = todos.filter((todo) =>
+  const visibleTodos = dayTodos.filter((todo) =>
     filter === "all"
       ? true
       : filter === "active"
@@ -42,7 +48,7 @@ export function TodoApp() {
     if (e.key !== "Enter" || e.nativeEvent.isComposing) return
     const text = draft.trim()
     if (!text) return
-    addTodo(text)
+    addTodo(text, date)
     setDraft("")
     // 새 항목이 필터에 가려지지 않도록 전체 보기로 돌아간다
     setFilter("all")
@@ -63,6 +69,46 @@ export function TodoApp() {
           ? "할 일은 이 브라우저에 저장됩니다"
           : "이 브라우저에서는 할 일이 저장되지 않습니다"}
       </p>
+      <div className="flex items-center gap-1">
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          onClick={() => setPicked(shiftDateKey(date, -1))}
+          disabled={!date}
+          aria-label="이전 날짜"
+        >
+          <ChevronLeftIcon />
+        </Button>
+        <div className="flex flex-1 flex-col items-center">
+          <Input
+            type="date"
+            value={date}
+            onChange={(e) => e.target.value && setPicked(e.target.value)}
+            aria-label="날짜 선택"
+            className="h-8 w-40 text-center"
+          />
+          <span className="mt-1 text-xs text-muted-foreground">
+            {date ? formatDateLabel(date) : " "}
+          </span>
+        </div>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          onClick={() => setPicked(shiftDateKey(date, 1))}
+          disabled={!date}
+          aria-label="다음 날짜"
+        >
+          <ChevronRightIcon />
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => setPicked(null)}
+          disabled={!picked || picked === today}
+        >
+          오늘
+        </Button>
+      </div>
       <Input
         value={draft}
         onChange={(e) => setDraft(e.target.value)}
@@ -82,8 +128,8 @@ export function TodoApp() {
       </Tabs>
       {visibleTodos.length === 0 ? (
         <p className="py-6 text-center text-sm text-muted-foreground">
-          {todos.length === 0
-            ? "할 일이 없습니다"
+          {dayTodos.length === 0
+            ? "이 날짜에는 할 일이 없습니다"
             : "해당하는 할 일이 없습니다"}
         </p>
       ) : (
@@ -104,7 +150,7 @@ export function TodoApp() {
           <Button
             variant="ghost"
             size="sm"
-            onClick={clearCompleted}
+            onClick={() => clearCompleted(date)}
             className="text-muted-foreground hover:text-destructive"
           >
             완료한 일 지우기 ({completedCount})

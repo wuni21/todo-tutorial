@@ -2,10 +2,14 @@
 
 import { useCallback, useSyncExternalStore } from "react"
 
+import { todayKey } from "@/lib/date"
+
 export type Todo = {
   id: string
   text: string
   completed: boolean
+  // 이 할 일이 속한 날짜 (YYYY-MM-DD)
+  date: string
 }
 
 const STORAGE_KEY = "todos"
@@ -21,7 +25,12 @@ function readTodos(): Todo[] {
   cachedRaw = raw
   try {
     const parsed: unknown = raw ? JSON.parse(raw) : []
-    cachedTodos = Array.isArray(parsed) ? (parsed as Todo[]) : EMPTY
+    // 날짜 기능 이전에 저장된 할 일은 오늘 날짜로 취급한다
+    cachedTodos = Array.isArray(parsed)
+      ? (parsed as Partial<Todo>[]).map(
+          (t) => ({ ...t, date: t.date ?? todayKey() }) as Todo
+        )
+      : EMPTY
   } catch {
     cachedTodos = EMPTY
   }
@@ -54,9 +63,9 @@ export function useTodos() {
   }, [])
 
   const addTodo = useCallback(
-    (text: string) =>
+    (text: string, date: string = todayKey()) =>
       update((prev) => [
-        { id: crypto.randomUUID(), text, completed: false },
+        { id: crypto.randomUUID(), text, completed: false, date },
         ...prev,
       ]),
     [update]
@@ -82,7 +91,9 @@ export function useTodos() {
   )
 
   const clearCompleted = useCallback(
-    () => update((prev) => prev.filter((t) => !t.completed)),
+    // 지정한 날짜의 완료 항목만 지운다
+    (date: string) =>
+      update((prev) => prev.filter((t) => !(t.completed && t.date === date))),
     [update]
   )
 
